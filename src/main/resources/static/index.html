@@ -1,0 +1,1803 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF OCR</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f3f6fa;
+            margin: 0;
+            padding: 0;
+            color: #17395c;
+        }
+
+        h1 {
+            text-align: center;
+            margin: 35px 0 30px;
+            font-size: 36px;
+        }
+
+        .container {
+            width: 92%;
+            max-width: 1000px;
+            margin: auto;
+        }
+
+        .box {
+            background: white;
+            padding: 28px;
+            margin-bottom: 22px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+        }
+
+        h2 {
+            margin-top: 0;
+            font-size: 27px;
+        }
+
+        h3 {
+            margin-top: 25px;
+        }
+
+        input[type="file"] {
+            margin: 10px 0 20px;
+            font-size: 15px;
+        }
+
+        button {
+            border: none;
+            border-radius: 5px;
+            padding: 11px 20px;
+            font-size: 15px;
+            cursor: pointer;
+        }
+
+        .upload-btn {
+            background: #3f78b8;
+            color: white;
+        }
+
+        .confirm-btn {
+            background: #198754;
+            color: white;
+        }
+
+        .save-result-btn {
+            background: #17395c;
+            color: white;
+        }
+
+        .add-btn {
+            background: #3f78b8;
+            color: white;
+            margin-top: 15px;
+            margin-right: 8px;
+        }
+
+        .remove-btn {
+            background: #dc3545;
+            color: white;
+            margin-top: 10px;
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .placeholder {
+            border: 1px solid #d5dde5;
+            border-radius: 6px;
+            padding: 25px;
+            text-align: center;
+            color: #777;
+            background: #fafbfc;
+        }
+
+        .field {
+            margin-bottom: 16px;
+        }
+
+        .field label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 6px;
+        }
+
+        .field input,
+        .field textarea {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 10px;
+            border: 1px solid #c7d1dc;
+            border-radius: 5px;
+            font-size: 15px;
+            font-family: Arial, sans-serif;
+        }
+
+        .field textarea {
+            min-height: 70px;
+            resize: vertical;
+        }
+
+        #prayer {
+            min-height: 300px;
+        }
+
+        #ocrText {
+            width: 100%;
+            box-sizing: border-box;
+            min-height: 250px;
+            resize: vertical;
+            padding: 10px;
+            border: 1px solid #c7d1dc;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 14px;
+        }
+
+        .party {
+            border: 1px solid #d5dde5;
+            border-radius: 7px;
+            padding: 18px;
+            margin-bottom: 18px;
+            background: #fafbfc;
+        }
+
+        .party-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+
+        .actions-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 25px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+        }
+
+        #extractedContent {
+            display: none;
+        }
+
+        .status-message {
+            margin-top: 15px;
+            font-weight: bold;
+        }
+
+        @media print {
+            .upload-section,
+            .actions-group,
+            .button-row,
+            .remove-btn {
+                display: none !important;
+            }
+
+            .box {
+                box-shadow: none;
+            }
+
+            body {
+                background: white;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<h1>PDF OCR</h1>
+
+<div class="container">
+
+    <div id="fileProtocolWarning"
+         style="display:none;
+                background:#fff3cd;
+                color:#856404;
+                border:1px solid #ffeeba;
+                padding:14px 18px;
+                border-radius:8px;
+                margin-bottom:22px;
+                line-height:1.5;">
+
+        ⚠️ <strong>Important Notice:</strong>
+        You opened this file directly from your disk
+        (<code>file://</code>).
+
+        <br><br>
+
+        👉 Please open this application at:
+
+        <a href="http://localhost:8080"
+           target="_blank"
+           style="color:#0b5ed7;font-weight:bold;">
+            http://localhost:8080
+        </a>
+    </div>
+
+
+    <!-- UPLOAD -->
+
+    <div class="box upload-section">
+
+        <h2>Upload PDF</h2>
+
+        <input
+                type="file"
+                id="pdfFile"
+                accept=".pdf">
+
+        <br>
+
+        <button
+                id="uploadBtn"
+                class="upload-btn"
+                onclick="uploadPDF()">
+
+            Upload PDF
+
+        </button>
+
+        <div
+                id="uploadStatus"
+                class="status-message">
+        </div>
+
+    </div>
+
+
+    <!-- EXTRACTED DATA -->
+
+    <div class="box">
+
+        <h2>Extracted Data</h2>
+
+        <div
+                id="placeholder"
+                class="placeholder">
+
+            Extracted data will appear here after uploading a PDF.
+
+        </div>
+
+
+        <div id="extractedContent">
+
+            <h3>Extracted Fields</h3>
+
+
+            <div class="field">
+
+                <label for="estCode">
+                    Est Code:
+                </label>
+
+                <input
+                        type="text"
+                        id="estCode">
+
+            </div>
+
+
+            <div class="field">
+
+                <label for="noticeNo">
+                    Notice Number:
+                </label>
+
+                <input
+                        type="text"
+                        id="noticeNo">
+
+            </div>
+
+
+            <div class="field">
+
+                <label for="district">
+                    District:
+                </label>
+
+                <input
+                        type="text"
+                        id="district">
+
+            </div>
+
+
+            <div class="field">
+
+                <label for="stNo">
+                    ST No:
+                </label>
+
+                <input
+                        type="text"
+                        id="stNo">
+
+            </div>
+
+
+            <div class="field">
+
+                <label for="stYear">
+                    ST Year:
+                </label>
+
+                <input
+                        type="text"
+                        id="stYear">
+
+            </div>
+
+
+            <div class="field">
+
+                <label for="crimeNo">
+                    Crime No:
+                </label>
+
+                <input
+                        type="text"
+                        id="crimeNo">
+
+            </div>
+
+
+            <div class="field">
+
+                <label for="crimeYear">
+                    Crime Year:
+                </label>
+
+                <input
+                        type="text"
+                        id="crimeYear">
+
+            </div>
+
+
+            <div class="field">
+
+                <label for="policeStation">
+                    Police Station:
+                </label>
+
+                <input
+                        type="text"
+                        id="policeStation">
+
+            </div>
+
+
+            <!-- PRAYER -->
+
+            <div class="field">
+
+                <label for="prayer">
+                    Prayer:
+                </label>
+
+                <textarea id="prayer"></textarea>
+
+            </div>
+
+
+            <!-- PARTIES -->
+
+            <h3>Parties</h3>
+
+            <div id="partiesContainer"></div>
+
+
+            <div class="button-row">
+
+                <button
+                        class="add-btn"
+                        onclick="addPetitioner()">
+
+                    Add Petitioner
+
+                </button>
+
+
+                <button
+                        class="add-btn"
+                        onclick="addRespondent()">
+
+                    Add Respondent
+
+                </button>
+
+            </div>
+
+
+            <!-- ACTIONS -->
+
+            <div class="actions-group">
+
+                <button
+                        class="confirm-btn"
+                        onclick="confirmEditedData()">
+
+                    Confirm Edited Data
+
+                </button>
+
+
+                <button
+                        class="save-result-btn"
+                        onclick="saveExtractedResult()">
+
+                    Save Extracted Result
+
+                </button>
+
+            </div>
+
+
+            <!-- OCR TEXT -->
+
+            <h3>OCR Text</h3>
+
+            <textarea
+                    id="ocrText"
+                    readonly></textarea>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<script>
+
+    if (window.location.protocol === "file:") {
+
+        const warning =
+            document.getElementById("fileProtocolWarning");
+
+        if (warning) {
+            warning.style.display = "block";
+        }
+    }
+
+
+    let petitionerCount = 0;
+    let respondentCount = 0;
+
+
+    async function uploadPDF() {
+
+        const fileInput =
+            document.getElementById("pdfFile");
+
+        const status =
+            document.getElementById("uploadStatus");
+
+        const uploadBtn =
+            document.getElementById("uploadBtn");
+
+
+        if (!fileInput.files.length) {
+
+            status.style.color = "#dc3545";
+
+            status.innerHTML =
+                "Please select a PDF file.";
+
+            return;
+        }
+
+
+        const selectedFile =
+            fileInput.files[0];
+
+
+        const fileSizeMB =
+            (
+                selectedFile.size /
+                (1024 * 1024)
+            ).toFixed(2);
+
+
+        const formData =
+            new FormData();
+
+
+        formData.append(
+            "file",
+            selectedFile
+        );
+
+
+        status.style.color = "#17395c";
+
+        status.innerHTML =
+            "⏳ Uploading and processing " +
+            "<strong>" +
+            escapeHtml(selectedFile.name) +
+            "</strong> (" +
+            fileSizeMB +
+            " MB)..." +
+            "<br>" +
+            "<small>" +
+            "Scanned PDF processing & OCR may take a few seconds." +
+            "</small>";
+
+
+        uploadBtn.disabled = true;
+
+
+        const endpoint =
+            (
+                window.location.protocol === "http:" ||
+                window.location.protocol === "https:"
+            )
+                ? "/api/ocr/upload"
+                : "http://localhost:8080/api/ocr/upload";
+
+
+        try {
+
+            const response =
+                await fetch(
+                    endpoint,
+                    {
+                        method: "POST",
+                        body: formData
+                    }
+                );
+
+
+            if (!response.ok) {
+
+                const errorMsg =
+                    await response.text();
+
+                throw new Error(
+                    errorMsg ||
+                    "Server returned error: " +
+                    response.status
+                );
+            }
+
+
+            const data =
+                await response.json();
+
+
+            displayExtractedData(data);
+
+
+            status.style.color =
+                "#198754";
+
+            status.innerHTML =
+                "✅ OCR Processing Successful!";
+
+
+        } catch (error) {
+
+            console.error(error);
+
+            status.style.color =
+                "#dc3545";
+
+
+            status.innerHTML =
+                "❌ <strong>Error:</strong> " +
+                escapeHtml(
+                    error.message ||
+                    "Could not connect to backend."
+                );
+
+        } finally {
+
+            uploadBtn.disabled = false;
+
+        }
+    }
+
+    function displayExtractedData(data) {
+
+        document.getElementById(
+            "placeholder"
+        ).style.display = "none";
+
+
+        document.getElementById(
+            "extractedContent"
+        ).style.display = "block";
+
+
+        setInputValue(
+            "estCode",
+            data.est_code || ""
+        );
+
+        setInputValue(
+            "noticeNo",
+            data.notice_no || ""
+        );
+
+        setInputValue(
+            "district",
+            data.district || ""
+        );
+
+        setInputValue(
+            "stNo",
+            data.stNo || ""
+        );
+
+        setInputValue(
+            "stYear",
+            data.stYear || ""
+        );
+
+        setInputValue(
+            "crimeNo",
+            data.crimeNo || ""
+        );
+
+        setInputValue(
+            "crimeYear",
+            data.crimeYear || ""
+        );
+
+        setInputValue(
+            "policeStation",
+            data.policeStation || ""
+        );
+
+
+        setTextareaValue(
+            "prayer",
+            data.prayer || ""
+        );
+
+
+        setTextareaValue(
+            "ocrText",
+            data.ocrText || ""
+        );
+
+
+        petitionerCount = 0;
+        respondentCount = 0;
+
+
+        const container =
+            document.getElementById(
+                "partiesContainer"
+            );
+
+
+        container.innerHTML = "";
+
+
+        if (
+            data.parties &&
+            data.parties.length > 0
+        ) {
+
+            data.parties.forEach(
+                function(party) {
+
+                    if (party.type === "P") {
+
+                        petitionerCount++;
+
+                        container.insertAdjacentHTML(
+                            "beforeend",
+                            createPartyHtml(
+                                party,
+                                "P",
+                                petitionerCount
+                            )
+                        );
+
+                    } else {
+
+                        respondentCount++;
+
+                        container.insertAdjacentHTML(
+                            "beforeend",
+                            createPartyHtml(
+                                party,
+                                "R",
+                                respondentCount
+                            )
+                        );
+                    }
+                }
+            );
+        }
+    }
+
+
+    function setInputValue(
+        id,
+        value
+    ) {
+
+        const element =
+            document.getElementById(id);
+
+
+        if (!element) {
+            return;
+        }
+
+
+        element.value =
+            value;
+
+
+        element.defaultValue =
+            value;
+
+
+        element.setAttribute(
+            "value",
+            value
+        );
+    }
+
+    function setTextareaValue(
+        id,
+        value
+    ) {
+
+        const element =
+            document.getElementById(id);
+
+
+        if (!element) {
+            return;
+        }
+
+
+        element.value =
+            value;
+
+
+        element.defaultValue =
+            value;
+
+
+        element.textContent =
+            value;
+    }
+
+    function createPartyHtml(
+        party,
+        type,
+        number
+    ) {
+
+        const isPetitioner =
+            type === "P";
+
+
+        const title =
+            isPetitioner
+                ? "Petitioner " + number
+                : "Respondent " + number;
+
+
+        let html =
+
+            '<div class="party" data-type="' +
+            escapeAttribute(type) +
+            '">' +
+
+            '<div class="party-title">' +
+            escapeHtml(title) +
+            '</div>' +
+
+            '<div class="field">' +
+
+            '<label>Name:</label>' +
+
+            '<textarea class="party-name">' +
+            escapeHtml(
+                party.name || ""
+            ) +
+            '</textarea>' +
+
+            '</div>';
+
+
+        if (isPetitioner) {
+
+            html +=
+
+                '<div class="field">' +
+
+                '<label>Address:</label>' +
+
+                '<textarea class="party-address">' +
+                escapeHtml(
+                    party.address || ""
+                ) +
+                '</textarea>' +
+
+                '</div>' +
+
+
+                '<div class="field">' +
+
+                '<label>District:</label>' +
+
+                '<input ' +
+                'type="text" ' +
+                'class="party-district" ' +
+                'value="' +
+                escapeAttribute(
+                    party.district || ""
+                ) +
+                '">' +
+
+                '</div>';
+        }
+
+
+        html +=
+
+            '<button ' +
+            'class="remove-btn" ' +
+            'onclick="removeParty(this)">' +
+
+            'Remove' +
+
+            '</button>' +
+
+            '</div>';
+
+
+        return html;
+    }
+
+
+    function addPetitioner() {
+
+        petitionerCount++;
+
+
+        const party = {
+
+            type: "P",
+            name: "",
+            address: "",
+            district: ""
+
+        };
+
+
+        document
+            .getElementById("partiesContainer")
+            .insertAdjacentHTML(
+                "beforeend",
+                createPartyHtml(
+                    party,
+                    "P",
+                    petitionerCount
+                )
+            );
+    }
+
+    function addRespondent() {
+
+        respondentCount++;
+
+
+        const party = {
+
+            type: "R",
+            name: ""
+
+        };
+
+
+        document
+            .getElementById("partiesContainer")
+            .insertAdjacentHTML(
+                "beforeend",
+                createPartyHtml(
+                    party,
+                    "R",
+                    respondentCount
+                )
+            );
+    }
+
+    function removeParty(button) {
+
+        const party =
+            button.closest(".party");
+
+
+        if (party) {
+            party.remove();
+        }
+
+
+        renumberParties();
+    }
+
+    function renumberParties() {
+
+        petitionerCount = 0;
+        respondentCount = 0;
+
+
+        document
+            .querySelectorAll(".party")
+            .forEach(
+                function(party) {
+
+                    const type =
+                        party.getAttribute(
+                            "data-type"
+                        );
+
+
+                    if (type === "P") {
+
+                        petitionerCount++;
+
+                        party.querySelector(
+                            ".party-title"
+                        ).textContent =
+                            "Petitioner " +
+                            petitionerCount;
+
+                    } else {
+
+                        respondentCount++;
+
+                        party.querySelector(
+                            ".party-title"
+                        ).textContent =
+                            "Respondent " +
+                            respondentCount;
+                    }
+                }
+            );
+    }
+
+
+    /*
+     * COLLECT CURRENT DATA
+     */
+
+    function collectCurrentData() {
+
+        const parties = [];
+
+
+        document
+            .querySelectorAll(".party")
+            .forEach(
+                function(partyElement) {
+
+                    const type =
+                        partyElement.getAttribute(
+                            "data-type"
+                        ) || "P";
+
+
+                    const nameElement =
+                        partyElement.querySelector(
+                            ".party-name"
+                        );
+
+
+                    const addressElement =
+                        partyElement.querySelector(
+                            ".party-address"
+                        );
+
+
+                    const districtElement =
+                        partyElement.querySelector(
+                            ".party-district"
+                        );
+
+
+                    const name =
+                        nameElement
+                            ? nameElement.value.trim()
+                            : "";
+
+
+                    const address =
+                        addressElement
+                            ? addressElement.value.trim()
+                            : "";
+
+
+                    const district =
+                        districtElement
+                            ? districtElement.value.trim()
+                            : "";
+
+
+                    parties.push({
+
+                        type: type,
+
+                        name: name,
+
+                        address: address,
+
+                        district: district
+
+                    });
+                }
+            );
+
+
+        return {
+
+            est_code:
+                getValue("estCode"),
+
+            notice_no:
+                getValue("noticeNo"),
+
+            district:
+                getValue("district"),
+
+            stNo:
+                getValue("stNo"),
+
+            stYear:
+                getValue("stYear"),
+
+            crimeNo:
+                getValue("crimeNo"),
+
+            crimeYear:
+                getValue("crimeYear"),
+
+            policeStation:
+                getValue("policeStation"),
+
+            prayer:
+                getValue("prayer"),
+
+            ocrText:
+                getValue("ocrText"),
+
+            parties: parties
+        };
+    }
+
+    function getValue(id) {
+
+        const element =
+            document.getElementById(id);
+
+
+        if (!element) {
+            return "";
+        }
+
+
+        return element.value.trim();
+    }
+
+    async function confirmEditedData() {
+
+        const data =
+            collectCurrentData();
+
+
+        if (
+            !data.notice_no ||
+            data.notice_no === "Not found"
+        ) {
+
+            alert(
+                "Please enter a valid Notice Number before saving to the database."
+            );
+
+            const noticeNo =
+                document.getElementById(
+                    "noticeNo"
+                );
+
+
+            if (noticeNo) {
+                noticeNo.focus();
+            }
+
+            return;
+        }
+
+
+        const status =
+            document.getElementById(
+                "uploadStatus"
+            );
+
+
+        const endpoint =
+            (
+                window.location.protocol === "http:" ||
+                window.location.protocol === "https:"
+            )
+                ? "/api/draft-notices/save-extracted"
+                : "http://localhost:8080/api/draft-notices/save-extracted";
+
+
+        if (status) {
+
+            status.style.color =
+                "#17395c";
+
+            status.innerHTML =
+                "⏳ Saving Notice <strong>" +
+                escapeHtml(data.notice_no) +
+                "</strong> and " +
+                data.parties.length +
+                " parties to the database...";
+        }
+
+
+        try {
+
+            const response =
+                await fetch(
+                    endpoint,
+                    {
+                        method: "POST",
+
+                        headers: {
+                            "Content-Type":
+                                "application/json"
+                        },
+
+                        body:
+                            JSON.stringify(data)
+                    }
+                );
+
+
+            if (!response.ok) {
+
+                const errorMsg =
+                    await response.text();
+
+                throw new Error(
+                    errorMsg ||
+                    "Server returned HTTP " +
+                    response.status
+                );
+            }
+
+
+            const saved =
+                await response.json();
+
+
+            console.log(
+                "Successfully saved notice:",
+                saved
+            );
+
+
+            if (status) {
+
+                status.style.color =
+                    "#198754";
+
+                status.innerHTML =
+                    "✅ <strong>Database Saved:</strong> " +
+                    "Notice <strong>" +
+                    escapeHtml(data.notice_no) +
+                    "</strong> & " +
+                    data.parties.length +
+                    " parties stored successfully!";
+            }
+
+
+            alert(
+                "Successfully saved Notice #" +
+                data.notice_no +
+                " and " +
+                data.parties.length +
+                " party records to the database!"
+            );
+
+
+        } catch (err) {
+
+            console.error(err);
+
+
+            if (status) {
+
+                status.style.color =
+                    "#dc3545";
+
+                status.innerHTML =
+                    "❌ <strong>Database Save Error:</strong> " +
+                    escapeHtml(
+                        err.message ||
+                        "Failed to connect to database."
+                    );
+            }
+
+
+            alert(
+                "Error saving to database: " +
+                (
+                    err.message ||
+                    "Could not connect to backend."
+                )
+            );
+        }
+    }
+
+    function saveExtractedResult() {
+
+        const data =
+            collectCurrentData();
+
+
+        if (
+            !data.notice_no ||
+            data.notice_no === "Not found"
+        ) {
+
+            alert(
+                "Please enter a valid Notice Number before saving the result."
+            );
+
+            const noticeNo =
+                document.getElementById(
+                    "noticeNo"
+                );
+
+
+            if (noticeNo) {
+                noticeNo.focus();
+            }
+
+            return;
+        }
+
+        document
+            .querySelectorAll("input")
+            .forEach(
+                function(input) {
+
+                    if (
+                        input.type !== "file"
+                    ) {
+
+                        input.setAttribute(
+                            "value",
+                            input.value
+                        );
+
+                        input.defaultValue =
+                            input.value;
+                    }
+                }
+            );
+
+        document
+            .querySelectorAll("textarea")
+            .forEach(
+                function(textarea) {
+
+                    textarea.textContent =
+                        textarea.value;
+
+                    textarea.defaultValue =
+                        textarea.value;
+                }
+            );
+
+        const clonedDocument =
+            document.documentElement.cloneNode(
+                true
+            );
+
+        const warning =
+            clonedDocument.getElementById(
+                "fileProtocolWarning"
+            );
+
+
+        if (warning) {
+            warning.remove();
+        }
+
+
+        const uploadSection =
+            clonedDocument.querySelector(
+                ".upload-section"
+            );
+
+
+        if (uploadSection) {
+            uploadSection.remove();
+        }
+
+
+        const buttonRow =
+            clonedDocument.querySelector(
+                ".button-row"
+            );
+
+
+        if (buttonRow) {
+            buttonRow.remove();
+        }
+
+
+        const actionsGroup =
+            clonedDocument.querySelector(
+                ".actions-group"
+            );
+
+
+        if (actionsGroup) {
+            actionsGroup.remove();
+        }
+
+
+        clonedDocument
+            .querySelectorAll(".remove-btn")
+            .forEach(
+                function(button) {
+                    button.remove();
+                }
+            );
+
+
+        /*
+         * Make extracted data visible.
+         */
+
+        const extracted =
+            clonedDocument.getElementById(
+                "extractedContent"
+            );
+
+
+        if (extracted) {
+            extracted.style.display = "block";
+        }
+
+
+        const placeholder =
+            clonedDocument.getElementById(
+                "placeholder"
+            );
+
+
+        if (placeholder) {
+            placeholder.remove();
+        }
+
+        const originalInputs =
+            document.querySelectorAll(
+                "input"
+            );
+
+
+        const clonedInputs =
+            clonedDocument.querySelectorAll(
+                "input"
+            );
+
+
+        originalInputs.forEach(
+            function(input, index) {
+
+                if (
+                    input.type === "file"
+                ) {
+                    return;
+                }
+
+
+                const clonedInput =
+                    clonedInputs[index];
+
+
+                if (!clonedInput) {
+                    return;
+                }
+
+
+                clonedInput.setAttribute(
+                    "value",
+                    input.value
+                );
+
+
+                clonedInput.defaultValue =
+                    input.value;
+            }
+        );
+
+
+        /*
+         * Make sure cloned textareas contain
+         * their current values.
+         */
+
+        const originalTextareas =
+            document.querySelectorAll(
+                "textarea"
+            );
+
+
+        const clonedTextareas =
+            clonedDocument.querySelectorAll(
+                "textarea"
+            );
+
+
+        originalTextareas.forEach(
+            function(textarea, index) {
+
+                const clonedTextarea =
+                    clonedTextareas[index];
+
+
+                if (!clonedTextarea) {
+                    return;
+                }
+
+
+                clonedTextarea.textContent =
+                    textarea.value;
+
+
+                clonedTextarea.defaultValue =
+                    textarea.value;
+            }
+        );
+
+
+        /*
+         * Change title.
+         */
+
+        const title =
+            clonedDocument.querySelector(
+                "title"
+            );
+
+
+        if (title) {
+
+            title.textContent =
+                data.notice_no +
+                " - OCR Result";
+        }
+
+
+        /*
+         * Remove the upload status from
+         * the saved result.
+         */
+
+        const clonedStatus =
+            clonedDocument.getElementById(
+                "uploadStatus"
+            );
+
+
+        if (clonedStatus) {
+            clonedStatus.remove();
+        }
+
+
+        /*
+         * Create standalone HTML.
+         */
+
+        const html =
+            "<!DOCTYPE html>\n" +
+            clonedDocument.outerHTML;
+
+
+        const blob =
+            new Blob(
+                [html],
+                {
+                    type:
+                        "text/html;charset=utf-8"
+                }
+            );
+
+
+        const url =
+            URL.createObjectURL(
+                blob
+            );
+
+
+        const link =
+            document.createElement(
+                "a"
+            );
+
+
+        link.href =
+            url;
+
+
+        link.download =
+            data.notice_no +
+            "_OCR_Result.html";
+
+
+        document.body.appendChild(
+            link
+        );
+
+
+        link.click();
+
+
+        document.body.removeChild(
+            link
+        );
+
+
+        URL.revokeObjectURL(
+            url
+        );
+    }
+
+
+    /*
+     * ESCAPE HTML
+     */
+
+    function escapeHtml(value) {
+
+        return String(value || "")
+            .replace(
+                /&/g,
+                "&amp;"
+            )
+            .replace(
+                /</g,
+                "&lt;"
+            )
+            .replace(
+                />/g,
+                "&gt;"
+            )
+            .replace(
+                /"/g,
+                "&quot;"
+            )
+            .replace(
+                /'/g,
+                "&#039;"
+            );
+    }
+
+
+    /*
+     * ESCAPE ATTRIBUTE
+     */
+
+    function escapeAttribute(value) {
+
+        return String(value || "")
+            .replace(
+                /&/g,
+                "&amp;"
+            )
+            .replace(
+                /</g,
+                "&lt;"
+            )
+            .replace(
+                />/g,
+                "&gt;"
+            )
+            .replace(
+                /"/g,
+                "&quot;"
+            )
+            .replace(
+                /'/g,
+                "&#039;"
+            );
+    }
+
+
+    /*
+     * KEEP FORM VALUES SYNCHRONIZED
+     * WITH HTML.
+     */
+
+    document.addEventListener(
+        "input",
+        function(event) {
+
+            const element =
+                event.target;
+
+
+            if (
+                element.tagName === "INPUT"
+            ) {
+
+                if (
+                    element.type !== "file"
+                ) {
+
+                    element.setAttribute(
+                        "value",
+                        element.value
+                    );
+
+                    element.defaultValue =
+                        element.value;
+                }
+
+            } else if (
+                element.tagName === "TEXTAREA"
+            ) {
+
+                element.textContent =
+                    element.value;
+
+                element.defaultValue =
+                    element.value;
+            }
+        }
+    );
+
+
+    /*
+     * RESTORE SAVED HTML RESULT
+     */
+
+    window.addEventListener(
+        "DOMContentLoaded",
+        function() {
+
+            const extracted =
+                document.getElementById(
+                    "extractedContent"
+                );
+
+
+            if (!extracted) {
+                return;
+            }
+
+
+            const inputs =
+                extracted.querySelectorAll(
+                    "input"
+                );
+
+
+            const textareas =
+                extracted.querySelectorAll(
+                    "textarea"
+                );
+
+
+            let hasData = false;
+
+
+            inputs.forEach(
+                function(input) {
+
+                    if (
+                        input.type === "file"
+                    ) {
+                        return;
+                    }
+
+
+                    const value =
+                        input.getAttribute(
+                            "value"
+                        );
+
+
+                    if (
+                        value !== null &&
+                        value !== ""
+                    ) {
+
+                        input.value =
+                            value;
+
+                        input.defaultValue =
+                            value;
+
+                        hasData = true;
+                    }
+                }
+            );
+
+
+            textareas.forEach(
+                function(textarea) {
+
+                    const value =
+                        textarea.textContent || "";
+
+
+                    if (value !== "") {
+
+                        textarea.value =
+                            value;
+
+                        textarea.defaultValue =
+                            value;
+
+                        hasData = true;
+                    }
+                }
+            );
+
+
+            const partiesContainer =
+                document.getElementById(
+                    "partiesContainer"
+                );
+
+
+            const hasParties =
+                partiesContainer &&
+                partiesContainer.children.length > 0;
+
+
+            if (
+                hasData ||
+                hasParties
+            ) {
+
+                const placeholder =
+                    document.getElementById(
+                        "placeholder"
+                    );
+
+
+                if (placeholder) {
+                    placeholder.style.display =
+                        "none";
+                }
+
+
+                extracted.style.display =
+                    "block";
+            }
+        }
+    );
+
+</script>
+
+</body>
+</html>
