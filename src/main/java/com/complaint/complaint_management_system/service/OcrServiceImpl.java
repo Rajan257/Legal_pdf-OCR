@@ -13,6 +13,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.awt.Graphics2D;
 import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
+import java.io.File;
 import java.util.concurrent.Semaphore;
 
 @Service
@@ -31,8 +32,19 @@ public class OcrServiceImpl implements OcrService {
         try {
             Tesseract tesseract = new Tesseract();
 
-            tesseract.setDatapath("C:\\Program Files\\Tesseract-OCR\\tessdata");
-            tesseract.setLanguage("eng");
+            File localTessData = new File("tessdata");
+            if (localTessData.exists()) {
+                tesseract.setDatapath(localTessData.getAbsolutePath());
+            } else {
+                tesseract.setDatapath("C:\\Program Files\\Tesseract-OCR\\tessdata");
+            }
+
+            File hinFile = new File(localTessData, "hin.traineddata");
+            if (hinFile.exists()) {
+                tesseract.setLanguage("eng+hin");
+            } else {
+                tesseract.setLanguage("eng");
+            }
             tesseract.setPageSegMode(3);
 
             StringBuilder extractedText = new StringBuilder();
@@ -43,31 +55,29 @@ public class OcrServiceImpl implements OcrService {
                 PDFTextStripper textStripper = new PDFTextStripper();
 
                 int totalPages = document.getNumberOfPages();
-                int pagesToProcess = (int) Math.ceil(totalPages * 0.12);
-
-                if (pagesToProcess < 20) {
-                   pagesToProcess = 20;
-                }
-
-                pagesToProcess = Math.min(pagesToProcess, totalPages);
+                int pagesToProcess = totalPages;
 
                 boolean rotatePages = false;
 
                 if (totalPages > 1) {
                     System.out.println("Detecting orientation using page 2...");
 
-                    BufferedImage referenceImage =
-                            pdfRenderer.renderImageWithDPI(1, 150);
+                    try {
+                        BufferedImage referenceImage =
+                                pdfRenderer.renderImageWithDPI(1, 150);
 
-                    rotatePages = shouldRotate(referenceImage, tesseract);
+                        rotatePages = shouldRotate(referenceImage, tesseract);
 
-                    System.out.println(
-                            "Orientation decision: "
-                                    + (rotatePages ? "180 degrees" : "normal")
-                    );
+                        System.out.println(
+                                "Orientation decision: "
+                                        + (rotatePages ? "180 degrees" : "normal")
+                        );
+                    } catch (Exception ex) {
+                        System.err.println("Orientation check skipped: " + ex.getMessage());
+                    }
                 }
 
-                for (int page = 1; page < pagesToProcess; page++) {
+                for (int page = 0; page < pagesToProcess; page++) {
 
                     System.out.println(
                             "Processing page " + (page + 1)
@@ -83,7 +93,7 @@ public class OcrServiceImpl implements OcrService {
                         String digitalText =
                                 textStripper.getText(document).trim();
 
-                        if (digitalText.length() > 100) {
+                        if (digitalText.length() > 50) {
                             System.out.println(
                                     "Page " + (page + 1)
                                             + ": Digital text detected. Skipping OCR."
@@ -98,7 +108,7 @@ public class OcrServiceImpl implements OcrService {
                             );
 
                             BufferedImage rawImage =
-                                    pdfRenderer.renderImageWithDPI(page, 200);
+                                    pdfRenderer.renderImageWithDPI(page, 150);
 
                             if (rotatePages) {
                                 rawImage = rotate180(rawImage);

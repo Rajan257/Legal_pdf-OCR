@@ -56,6 +56,14 @@ public class Draft_notice {
     @Column(name = "trial_court_name", length = 50)
     private String trialCourtName;
 
+    // OCR raw output stored for auditing / re-processing
+    @Column(name = "ocr_text", columnDefinition = "LONGTEXT")
+    private String ocrText;
+
+    // Parsed case title (petitioner vs respondent heading)
+    @Column(name = "case_title", columnDefinition = "TEXT")
+    private String caseTitle;
+
     @CreationTimestamp
     @Column(name = "create_modify", updatable = false)
     private LocalDateTime createModify;

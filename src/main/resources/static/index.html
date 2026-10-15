@@ -1099,475 +1099,109 @@
         return element.value.trim();
     }
 
-    async function confirmEditedData() {
+    let isDataConfirmed = false;
 
-        const data =
-            collectCurrentData();
+    function confirmEditedData() {
+        const data = collectCurrentData();
 
-
-        if (
-            !data.notice_no ||
-            data.notice_no === "Not found"
-        ) {
-
-            alert(
-                "Please enter a valid Notice Number before saving to the database."
-            );
-
-            const noticeNo =
-                document.getElementById(
-                    "noticeNo"
-                );
-
-
-            if (noticeNo) {
-                noticeNo.focus();
+        // 1. Validate the current form data
+        if (!data.notice_no || data.notice_no === "Not found") {
+            const userChoice = confirm("Notice Number is currently blank or 'Not found'. Would you like to proceed anyway? A reference ID will be automatically generated upon saving.");
+            if (!userChoice) {
+                const noticeNoEl = document.getElementById("noticeNo");
+                if (noticeNoEl) noticeNoEl.focus();
+                return;
             }
-
-            return;
         }
 
+        // 2. Preserve all user edits across inputs and textareas
+        document.querySelectorAll("input").forEach(function(input) {
+            if (input.type !== "file") {
+                input.setAttribute("value", input.value);
+                input.defaultValue = input.value;
+            }
+        });
 
-        const status =
-            document.getElementById(
-                "uploadStatus"
-            );
+        document.querySelectorAll("textarea").forEach(function(textarea) {
+            textarea.textContent = textarea.value;
+            textarea.defaultValue = textarea.value;
+        });
 
+        isDataConfirmed = true;
 
-        const endpoint =
-            (
-                window.location.protocol === "http:" ||
-                window.location.protocol === "https:"
-            )
-                ? "/api/draft-notices/save-extracted"
-                : "http://localhost:8080/api/draft-notices/save-extracted";
-
-
+        const status = document.getElementById("uploadStatus");
         if (status) {
-
-            status.style.color =
-                "#17395c";
-
-            status.innerHTML =
-                "⏳ Saving Notice <strong>" +
-                escapeHtml(data.notice_no) +
-                "</strong> and " +
-                data.parties.length +
-                " parties to the database...";
+            status.style.color = "#198754";
+            status.innerHTML = "✅ <strong>Data Confirmed:</strong> All extracted fields and " +
+                data.parties.length + " parties have been validated and preserved. Ready to save extracted results.";
         }
 
-
-        try {
-
-            const response =
-                await fetch(
-                    endpoint,
-                    {
-                        method: "POST",
-
-                        headers: {
-                            "Content-Type":
-                                "application/json"
-                        },
-
-                        body:
-                            JSON.stringify(data)
-                    }
-                );
-
-
-            if (!response.ok) {
-
-                const errorMsg =
-                    await response.text();
-
-                throw new Error(
-                    errorMsg ||
-                    "Server returned HTTP " +
-                    response.status
-                );
-            }
-
-
-            const saved =
-                await response.json();
-
-
-            console.log(
-                "Successfully saved notice:",
-                saved
-            );
-
-
-            if (status) {
-
-                status.style.color =
-                    "#198754";
-
-                status.innerHTML =
-                    "✅ <strong>Database Saved:</strong> " +
-                    "Notice <strong>" +
-                    escapeHtml(data.notice_no) +
-                    "</strong> & " +
-                    data.parties.length +
-                    " parties stored successfully!";
-            }
-
-
-            alert(
-                "Successfully saved Notice #" +
-                data.notice_no +
-                " and " +
-                data.parties.length +
-                " party records to the database!"
-            );
-
-
-        } catch (err) {
-
-            console.error(err);
-
-
-            if (status) {
-
-                status.style.color =
-                    "#dc3545";
-
-                status.innerHTML =
-                    "❌ <strong>Database Save Error:</strong> " +
-                    escapeHtml(
-                        err.message ||
-                        "Failed to connect to database."
-                    );
-            }
-
-
-            alert(
-                "Error saving to database: " +
-                (
-                    err.message ||
-                    "Could not connect to backend."
-                )
-            );
-        }
+        alert("✅ Form data confirmed and validated! All edits are preserved and ready to be saved.");
     }
 
-    function saveExtractedResult() {
+    async function saveExtractedResult() {
+        const data = collectCurrentData();
 
-        const data =
-            collectCurrentData();
+        // Preserve all user edits
+        document.querySelectorAll("input").forEach(function(input) {
+            if (input.type !== "file") {
+                input.setAttribute("value", input.value);
+                input.defaultValue = input.value;
+            }
+        });
 
+        document.querySelectorAll("textarea").forEach(function(textarea) {
+            textarea.textContent = textarea.value;
+            textarea.defaultValue = textarea.value;
+        });
 
-        if (
-            !data.notice_no ||
-            data.notice_no === "Not found"
-        ) {
+        const status = document.getElementById("uploadStatus");
+        const endpoint = (window.location.protocol === "http:" || window.location.protocol === "https:")
+            ? "/api/draft-notices/save-extracted"
+            : "http://localhost:8080/api/draft-notices/save-extracted";
 
-            alert(
-                "Please enter a valid Notice Number before saving the result."
-            );
+        if (status) {
+            status.style.color = "#17395c";
+            status.innerHTML = "⏳ Saving notice records and " + data.parties.length + " party entries to database...";
+        }
 
-            const noticeNo =
-                document.getElementById(
-                    "noticeNo"
-                );
+        try {
+            const response = await fetch(endpoint, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(data)
+            });
 
-
-            if (noticeNo) {
-                noticeNo.focus();
+            if (!response.ok) {
+                const errorMsg = await response.text();
+                throw new Error(errorMsg || "Server returned HTTP " + response.status);
             }
 
-            return;
-        }
+            const saved = await response.json();
 
-        document
-            .querySelectorAll("input")
-            .forEach(
-                function(input) {
+            const savedNoticeNo = saved.noticeNo || data.notice_no || "Saved";
 
-                    if (
-                        input.type !== "file"
-                    ) {
-
-                        input.setAttribute(
-                            "value",
-                            input.value
-                        );
-
-                        input.defaultValue =
-                            input.value;
-                    }
-                }
-            );
-
-        document
-            .querySelectorAll("textarea")
-            .forEach(
-                function(textarea) {
-
-                    textarea.textContent =
-                        textarea.value;
-
-                    textarea.defaultValue =
-                        textarea.value;
-                }
-            );
-
-        const clonedDocument =
-            document.documentElement.cloneNode(
-                true
-            );
-
-        const warning =
-            clonedDocument.getElementById(
-                "fileProtocolWarning"
-            );
-
-
-        if (warning) {
-            warning.remove();
-        }
-
-
-        const uploadSection =
-            clonedDocument.querySelector(
-                ".upload-section"
-            );
-
-
-        if (uploadSection) {
-            uploadSection.remove();
-        }
-
-
-        const buttonRow =
-            clonedDocument.querySelector(
-                ".button-row"
-            );
-
-
-        if (buttonRow) {
-            buttonRow.remove();
-        }
-
-
-        const actionsGroup =
-            clonedDocument.querySelector(
-                ".actions-group"
-            );
-
-
-        if (actionsGroup) {
-            actionsGroup.remove();
-        }
-
-
-        clonedDocument
-            .querySelectorAll(".remove-btn")
-            .forEach(
-                function(button) {
-                    button.remove();
-                }
-            );
-
-
-        /*
-         * Make extracted data visible.
-         */
-
-        const extracted =
-            clonedDocument.getElementById(
-                "extractedContent"
-            );
-
-
-        if (extracted) {
-            extracted.style.display = "block";
-        }
-
-
-        const placeholder =
-            clonedDocument.getElementById(
-                "placeholder"
-            );
-
-
-        if (placeholder) {
-            placeholder.remove();
-        }
-
-        const originalInputs =
-            document.querySelectorAll(
-                "input"
-            );
-
-
-        const clonedInputs =
-            clonedDocument.querySelectorAll(
-                "input"
-            );
-
-
-        originalInputs.forEach(
-            function(input, index) {
-
-                if (
-                    input.type === "file"
-                ) {
-                    return;
-                }
-
-
-                const clonedInput =
-                    clonedInputs[index];
-
-
-                if (!clonedInput) {
-                    return;
-                }
-
-
-                clonedInput.setAttribute(
-                    "value",
-                    input.value
-                );
-
-
-                clonedInput.defaultValue =
-                    input.value;
+            if (status) {
+                status.style.color = "#198754";
+                status.innerHTML = "✅ <strong>Saved Successfully:</strong> Notice <strong>" +
+                    escapeHtml(savedNoticeNo) + "</strong> and " +
+                    data.parties.length + " party records persisted to database.";
             }
-        );
 
+            alert("✅ Extracted result successfully saved to database!\nNotice No: " + savedNoticeNo +
+                  "\nParties saved: " + data.parties.length);
 
-        /*
-         * Make sure cloned textareas contain
-         * their current values.
-         */
-
-        const originalTextareas =
-            document.querySelectorAll(
-                "textarea"
-            );
-
-
-        const clonedTextareas =
-            clonedDocument.querySelectorAll(
-                "textarea"
-            );
-
-
-        originalTextareas.forEach(
-            function(textarea, index) {
-
-                const clonedTextarea =
-                    clonedTextareas[index];
-
-
-                if (!clonedTextarea) {
-                    return;
-                }
-
-
-                clonedTextarea.textContent =
-                    textarea.value;
-
-
-                clonedTextarea.defaultValue =
-                    textarea.value;
+        } catch (err) {
+            console.error("Save error:", err);
+            if (status) {
+                status.style.color = "#dc3545";
+                status.innerHTML = "❌ <strong>Database Save Failed:</strong> " +
+                    escapeHtml(err.message || "Could not connect to database.");
             }
-        );
-
-
-        /*
-         * Change title.
-         */
-
-        const title =
-            clonedDocument.querySelector(
-                "title"
-            );
-
-
-        if (title) {
-
-            title.textContent =
-                data.notice_no +
-                " - OCR Result";
+            alert("❌ Save Extracted Result failed: " + (err.message || "Failed to persist to database."));
         }
-
-
-        /*
-         * Remove the upload status from
-         * the saved result.
-         */
-
-        const clonedStatus =
-            clonedDocument.getElementById(
-                "uploadStatus"
-            );
-
-
-        if (clonedStatus) {
-            clonedStatus.remove();
-        }
-
-
-        /*
-         * Create standalone HTML.
-         */
-
-        const html =
-            "<!DOCTYPE html>\n" +
-            clonedDocument.outerHTML;
-
-
-        const blob =
-            new Blob(
-                [html],
-                {
-                    type:
-                        "text/html;charset=utf-8"
-                }
-            );
-
-
-        const url =
-            URL.createObjectURL(
-                blob
-            );
-
-
-        const link =
-            document.createElement(
-                "a"
-            );
-
-
-        link.href =
-            url;
-
-
-        link.download =
-            data.notice_no +
-            "_OCR_Result.html";
-
-
-        document.body.appendChild(
-            link
-        );
-
-
-        link.click();
-
-
-        document.body.removeChild(
-            link
-        );
-
-
-        URL.revokeObjectURL(
-            url
-        );
     }
 
 

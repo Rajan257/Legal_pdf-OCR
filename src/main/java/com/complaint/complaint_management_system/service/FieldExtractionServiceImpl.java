@@ -25,8 +25,8 @@ public class FieldExtractionServiceImpl implements FieldExtractionService {
         ExtractedComplaintData data = new ExtractedComplaintData();
 
         data.setOcrText(text);
-        data.setEst_code(extractEstCode(fileName));
-        data.setNotice_no(extractNoticeNo(fileName));
+        data.setEst_code(extractEstCode(fileName, text));
+        data.setNotice_no(extractNoticeNo(fileName, text));
 
         String prayer = extractPrayer(text);
 
@@ -34,8 +34,9 @@ public class FieldExtractionServiceImpl implements FieldExtractionService {
 
         data.setParties(extractParties(text));
 
+        // Use full text so case metadata (District, ST No/Year, Crime No/Year, Police Station) is extracted across entire document
         ExtractedComplaintData partyDetails =
-                partyDetailsService.extractPartyDetails(prayer);
+                partyDetailsService.extractPartyDetails(text);
 
         data.setDistrict(partyDetails.getDistrict());
 
@@ -52,39 +53,52 @@ public class FieldExtractionServiceImpl implements FieldExtractionService {
         return data;
     }
 
-    private String extractEstCode(String fileName) {
+    private String extractEstCode(String fileName, String text) {
 
-        if (fileName == null || fileName.isBlank()) {
-            return "Not found";
+        if (text != null && !text.isBlank()) {
+            Matcher m = Pattern.compile("\\b(?:Est\\.?\\s*Code|Establishment\\s*Code)\\s*[:\\-–—]?\\s*([A-Za-z0-9]+)", Pattern.CASE_INSENSITIVE)
+                    .matcher(text);
+            if (m.find()) {
+                return m.group(1).trim();
+            }
+            Matcher m2 = Pattern.compile("\\b(UPHC\\d{2})\\b", Pattern.CASE_INSENSITIVE).matcher(text);
+            if (m2.find()) {
+                return m2.group(1).trim();
+            }
         }
 
-        char firstChar = Character.toUpperCase(fileName.charAt(0));
-
-        if (firstChar == 'L') {
-            return "UPHCO2";
+        if (fileName != null && !fileName.isBlank()) {
+            char firstChar = Character.toUpperCase(fileName.charAt(0));
+            if (firstChar == 'L') {
+                return "UPHCO2";
+            }
+            if (firstChar == 'A') {
+                return "UPHC01";
+            }
         }
 
-        if (firstChar == 'A') {
-            return "UPHC01";
-        }
-
-        return "Not found";
+        return "";
     }
 
-    private String extractNoticeNo(String fileName) {
+    private String extractNoticeNo(String fileName, String text) {
 
-        if (fileName == null || fileName.isBlank()) {
-            return "Not found";
+        if (text != null && !text.isBlank()) {
+            Matcher m = Pattern.compile("\\bNotice\\s*(?:No\\.?|Number)?\\s*[:\\-–—]?\\s*([A-Za-z0-9\\-_/]+)", Pattern.CASE_INSENSITIVE)
+                    .matcher(text);
+            if (m.find()) {
+                return m.group(1).trim();
+            }
         }
 
-        Matcher matcher = Pattern.compile("\\d{8,}")
-                .matcher(fileName);
-
-        if (matcher.find()) {
-            return matcher.group();
+        if (fileName != null && !fileName.isBlank()) {
+            Matcher matcher = Pattern.compile("\\d{8,}")
+                    .matcher(fileName);
+            if (matcher.find()) {
+                return matcher.group();
+            }
         }
 
-        return "Not found";
+        return "";
     }
 
     private String extractPrayer(String text) {
@@ -176,31 +190,26 @@ public class FieldExtractionServiceImpl implements FieldExtractionService {
                 continue;
             }
 
+            // Skip index/table of contents lines (e.g. "1. List of Dates...", "3. Application for Interim Relief...", "Particulars", "Annexure")
+            if (line.matches("(?i)^\\s*\\d+[\\.\\|\\-]\\s*.*") ||
+                line.matches("(?i).*\\b(?:Annexure|Particulars|Page\\s*No|SI\\.\\s*No)\\b.*")) {
+                continue;
+            }
+
             String normalized = line.toLowerCase()
                     .replaceAll("[^a-z0-9 ]", " ")
                     .replaceAll("\\s+", " ")
                     .trim();
 
             boolean hasPrayerHeading = normalized.equals("prayer")
-                    || normalized.equals("prayers");
+                    || normalized.equals("prayers")
+                    || normalized.equals("prayer for interim relief")
+                    || normalized.equals("relief sought")
+                    || normalized.equals("reliefs sought")
+                    || normalized.startsWith("prayer ")
+                    || normalized.endsWith(" prayer");
 
-            boolean hasApplication = fuzzyMatchingService
-                    .containsKeyword(normalized, "application", 0.80);
-
-            boolean hasInterim = fuzzyMatchingService
-                    .containsKeyword(normalized, "interim", 0.80);
-
-            boolean hasRelief = fuzzyMatchingService
-                    .containsKeyword(normalized, "relief", 0.80);
-
-            System.out.println("Line index: " + i);
-            System.out.println("Line: " + line);
-            System.out.println("hasPrayerHeading: " + hasPrayerHeading);
-            System.out.println("hasApplication: " + hasApplication);
-            System.out.println("hasInterim: " + hasInterim);
-            System.out.println("hasRelief: " + hasRelief);
-
-            if (hasPrayerHeading || (hasApplication && hasInterim && hasRelief)) {
+            if (hasPrayerHeading) {
                 System.out.println("PRAYER HEADING DETECTED AT INDEX: " + i);
                 System.out.println("DETECTED LINE: " + line);
                 System.out.println("EXTRACTION STARTS AT INDEX: " + (i + 1));
@@ -413,6 +422,7 @@ public class FieldExtractionServiceImpl implements FieldExtractionService {
     private List<Draft_party> extractParties(String text) {
 
         List<Draft_party> bestParties = new ArrayList<>();
+        int bestScore = -1;
 
         if (text == null || text.isBlank()) {
             return bestParties;
@@ -478,8 +488,32 @@ public class FieldExtractionServiceImpl implements FieldExtractionService {
                         )
                 );
 
-                if (candidate.size() >= bestParties.size()) {
-                    bestParties = candidate;
+                List<Draft_party> validCandidate = new ArrayList<>();
+                for (Draft_party p : candidate) {
+                    if (isValidPartyName(p.getName())) {
+                        validCandidate.add(p);
+                    }
+                }
+
+                boolean hasP = validCandidate.stream().anyMatch(p -> "P".equalsIgnoreCase(p.getType()));
+                boolean hasR = validCandidate.stream().anyMatch(p -> "R".equalsIgnoreCase(p.getType()));
+
+                if (hasP && hasR) {
+                    int score = validCandidate.size();
+                    for (Draft_party p : validCandidate) {
+                        String n = p.getName().toLowerCase();
+                        if (n.contains("state of") || n.contains("union of")) {
+                            score += 5;
+                        }
+                    }
+                    if (petitionerPage <= 12) {
+                        score += 15;
+                    }
+
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestParties = validCandidate;
+                    }
                 }
             }
         }
@@ -488,18 +522,68 @@ public class FieldExtractionServiceImpl implements FieldExtractionService {
             List<Draft_party> fallbackParties =
                     extractPartiesUsingVersus(pages);
 
-            if (fallbackParties.size() >= bestParties.size()) {
+            if (!fallbackParties.isEmpty()) {
                 bestParties = fallbackParties;
             }
         }
 
-        return bestParties;
+        return deduplicateParties(bestParties);
     }
 
+    private boolean isValidPartyName(String name) {
+        if (name == null || name.isBlank() || name.length() < 3) {
+            return false;
+        }
+        String clean = name.trim().toLowerCase();
+        if (clean.startsWith("that ") || clean.startsWith("that,") || clean.startsWith("wherefore") || clean.startsWith("in re")) {
+            return false;
+        }
+        if (clean.contains("advocate") || clean.contains("counsel for") || clean.contains("counsel") || clean.contains("aor") || clean.contains("vakalatnama")) {
+            return false;
+        }
+        if (clean.contains("interest of justice") ||
+            clean.contains("code of criminal procedure") ||
+            clean.contains("first information report") ||
+            clean.contains("session trial") ||
+            clean.contains("learned court below") ||
+            clean.contains("affidavit") ||
+            clean.contains("impugned order") ||
+            clean.contains("hereby rejected") ||
+            clean.contains("facing trial") ||
+            clean.contains("section 306") ||
+            clean.contains("quash the impugned")) {
+            return false;
+        }
+        return true;
+    }
+
+    private List<Draft_party> deduplicateParties(List<Draft_party> parties) {
+        if (parties == null) return new ArrayList<>();
+        List<Draft_party> unique = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        int pIndex = 1;
+        int rIndex = 1;
+        for (Draft_party party : parties) {
+            String norm = party.getName().toLowerCase().replaceAll("[^a-z0-9]", " ").replaceAll("\\s+", " ").trim();
+            if (norm.isEmpty()) continue;
+            String key = party.getType() + "_" + norm.substring(0, Math.min(25, norm.length()));
+            if (!seen.contains(key)) {
+                seen.add(key);
+                if ("P".equalsIgnoreCase(party.getType())) {
+                    party.setSerialNo(pIndex++);
+                } else {
+                    party.setSerialNo(rIndex++);
+                }
+                unique.add(party);
+            }
+        }
+        return unique;
+    }
 
     private List<Draft_party> extractPartiesUsingVersus(String[] pages) {
 
         List<Draft_party> bestParties = new ArrayList<>();
+        int bestScore = -1;
 
         for (int versusPage = 0;
              versusPage < pages.length;
@@ -557,11 +641,23 @@ public class FieldExtractionServiceImpl implements FieldExtractionService {
                 candidate.addAll(petitionerParties);
                 candidate.addAll(respondentParties);
 
-                if (!petitionerParties.isEmpty()
-                        && !respondentParties.isEmpty()
-                        && candidate.size() >= bestParties.size()) {
+                List<Draft_party> validCandidate = new ArrayList<>();
+                for (Draft_party p : candidate) {
+                    if (isValidPartyName(p.getName())) {
+                        validCandidate.add(p);
+                    }
+                }
 
-                    bestParties = candidate;
+                boolean hasP = validCandidate.stream().anyMatch(p -> "P".equalsIgnoreCase(p.getType()));
+                boolean hasR = validCandidate.stream().anyMatch(p -> "R".equalsIgnoreCase(p.getType()));
+
+                if (hasP && hasR) {
+                    int score = validCandidate.size();
+                    if (versusPage <= 12) score += 15;
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestParties = validCandidate;
+                    }
                 }
             }
         }
@@ -836,6 +932,10 @@ public class FieldExtractionServiceImpl implements FieldExtractionService {
                 .replaceAll("\\s+", " ")
                 .trim()
                 .toLowerCase();
+
+        if (cleaned.contains("counsel") || cleaned.contains("advocate") || cleaned.contains("aor") || cleaned.contains("chamber")) {
+            return false;
+        }
 
         String[] roles = {
                 "petitioner", "petitioners",

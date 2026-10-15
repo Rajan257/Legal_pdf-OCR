@@ -34,9 +34,10 @@ public class DraftNoticeServiceImpl implements DraftNoticeService {
 
         String noticeNo = data.getNotice_no();
         if (noticeNo == null || noticeNo.isBlank() || "Not found".equalsIgnoreCase(noticeNo.trim())) {
-            throw new IllegalArgumentException("A valid Notice Number is required to save to database.");
+            noticeNo = "NOTICE-" + System.currentTimeMillis();
+        } else {
+            noticeNo = noticeNo.trim();
         }
-        noticeNo = noticeNo.trim();
 
         Draft_notice notice = new Draft_notice();
         notice.setNoticeNo(noticeNo);
@@ -48,6 +49,7 @@ public class DraftNoticeServiceImpl implements DraftNoticeService {
         notice.setOrderNo(data.getOrder_no());
         notice.setOrderDetails(data.getOrder_details());
         notice.setTrialCourtName(data.getTrial_court_name());
+        notice.setOcrText(data.getOcrText());
 
         notice.setCrimeYear(parseIntegerSafe(data.getCrimeYear()));
         notice.setStNo(parseIntegerSafe(data.getStNo()));
