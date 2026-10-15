@@ -78,7 +78,7 @@ public class FieldExtractionServiceImpl implements FieldExtractionService {
         }
 
         Matcher matcher = Pattern.compile("\\d{8,}")
-                        .matcher(fileName);
+                .matcher(fileName);
 
         if (matcher.find()) {
             return matcher.group();
@@ -168,7 +168,6 @@ public class FieldExtractionServiceImpl implements FieldExtractionService {
     }
 
 
-
     private int findPrayerStart(String[] lines) {
         for (int i = 0; i < lines.length; i++) {
             String line = cleanLine(lines[i]);
@@ -213,8 +212,6 @@ public class FieldExtractionServiceImpl implements FieldExtractionService {
         System.out.println("NO PRAYER HEADING FOUND");
         return -1;
     }
-
-
 
 
     private boolean findPrayerFooter(
@@ -412,78 +409,74 @@ public class FieldExtractionServiceImpl implements FieldExtractionService {
                 .trim();
     }
 
-    private List<Draft_party> extractParties(
-            String text) {
 
-        List<Draft_party> bestParties =
-                new ArrayList<>();
+    private List<Draft_party> extractParties(String text) {
+
+        List<Draft_party> bestParties = new ArrayList<>();
 
         if (text == null || text.isBlank()) {
             return bestParties;
         }
 
-        String[] pages =
-                text.split("(?=--- PAGE \\d+ ---)");
+        String[] pages = text.split("(?=--- PAGE \\d+ ---)");
+
+        boolean petitionerRoleFound = false;
 
         for (int petitionerPage = 0;
              petitionerPage < pages.length;
              petitionerPage++) {
 
-            String[] lines =
-                    pages[petitionerPage].split("\\R");
+            String[] lines = pages[petitionerPage].split("\\R");
 
             for (int petitionerLine = 0;
                  petitionerLine < lines.length;
                  petitionerLine++) {
 
-                String line =
-                        cleanLine(lines[petitionerLine]);
+                String line = cleanLine(lines[petitionerLine]);
 
                 if (!isPetitionerLine(line)) {
                     continue;
                 }
 
-                int[] petitionerStart =
-                        searchPetitionerStart(
-                                pages,
-                                petitionerPage,
-                                petitionerLine
-                        );
+                petitionerRoleFound = true;
+
+                int[] petitionerStart = searchPetitionerStart(
+                        pages,
+                        petitionerPage,
+                        petitionerLine
+                );
 
                 if (petitionerStart == null) {
                     continue;
                 }
 
-                int[] versusPosition =
-                        findVersusAcrossPages(
-                                pages,
-                                petitionerPage,
-                                petitionerLine
-                        );
+                int[] versusPosition = findVersusAcrossPages(
+                        pages,
+                        petitionerPage,
+                        petitionerLine
+                );
 
                 if (versusPosition == null) {
                     continue;
                 }
 
-                List<Draft_party> petitionerParties =
+                List<Draft_party> candidate = new ArrayList<>();
+
+                candidate.addAll(
                         parsePetitionerBlock(
                                 pages,
                                 petitionerStart,
                                 petitionerPage,
                                 petitionerLine
-                        );
+                        )
+                );
 
-                List<Draft_party> respondentParties =
+                candidate.addAll(
                         parseRespondentBlock(
                                 pages,
                                 versusPosition
-                        );
-
-                List<Draft_party> candidate =
-                        new ArrayList<>();
-
-                candidate.addAll(petitionerParties);
-                candidate.addAll(respondentParties);
+                        )
+                );
 
                 if (candidate.size() >= bestParties.size()) {
                     bestParties = candidate;
@@ -491,7 +484,226 @@ public class FieldExtractionServiceImpl implements FieldExtractionService {
             }
         }
 
+        if (!petitionerRoleFound || bestParties.isEmpty()) {
+            List<Draft_party> fallbackParties =
+                    extractPartiesUsingVersus(pages);
+
+            if (fallbackParties.size() >= bestParties.size()) {
+                bestParties = fallbackParties;
+            }
+        }
+
         return bestParties;
+    }
+
+
+    private List<Draft_party> extractPartiesUsingVersus(String[] pages) {
+
+        List<Draft_party> bestParties = new ArrayList<>();
+
+        for (int versusPage = 0;
+             versusPage < pages.length;
+             versusPage++) {
+
+            String[] lines = pages[versusPage].split("\\R");
+
+            for (int versusLine = 0;
+                 versusLine < lines.length;
+                 versusLine++) {
+
+                if (!isVersusLine(cleanLine(lines[versusLine]))) {
+                    continue;
+                }
+
+                int[] headingPosition = findHighCourtHeading(
+                        pages,
+                        versusPage,
+                        versusLine
+                );
+
+                if (headingPosition == null) {
+                    continue;
+                }
+
+                int[] petitionerStart = findFallbackPetitionerStart(
+                        pages,
+                        headingPosition,
+                        versusPage,
+                        versusLine
+                );
+
+                if (petitionerStart == null) {
+                    continue;
+                }
+
+                List<String> petitionerLines = collectFallbackPetitionerLines(
+                        pages,
+                        petitionerStart,
+                        versusPage,
+                        versusLine
+                );
+
+                List<Draft_party> petitionerParties =
+                        parseFallbackPetitionerLines(petitionerLines);
+
+                List<Draft_party> respondentParties =
+                        parseRespondentBlock(
+                                pages,
+                                new int[]{versusPage, versusLine}
+                        );
+
+                List<Draft_party> candidate = new ArrayList<>();
+
+                candidate.addAll(petitionerParties);
+                candidate.addAll(respondentParties);
+
+                if (!petitionerParties.isEmpty()
+                        && !respondentParties.isEmpty()
+                        && candidate.size() >= bestParties.size()) {
+
+                    bestParties = candidate;
+                }
+            }
+        }
+
+        return bestParties;
+    }
+
+    private int[] findFallbackPetitionerStart(
+            String[] pages,
+            int[] headingPosition,
+            int versusPage,
+            int versusLine) {
+
+        boolean yearFound = false;
+
+        for (int pageIndex = headingPosition[0];
+             pageIndex <= versusPage;
+             pageIndex++) {
+
+            String[] lines = pages[pageIndex].split("\\R");
+
+            int start = pageIndex == headingPosition[0]
+                    ? headingPosition[1] + 1
+                    : 0;
+
+            int end = pageIndex == versusPage
+                    ? versusLine
+                    : lines.length;
+
+            for (int i = start; i < end; i++) {
+
+                String line = cleanLine(lines[i]);
+
+                if (line.isBlank()) {
+                    continue;
+                }
+
+                if (!yearFound) {
+                    if (containsCaseYear(line)) {
+                        yearFound = true;
+                    }
+                    continue;
+                }
+
+                if (isBracketLine(line)
+                        || isListOfDatesLine(line)
+                        || isVersusLine(line)
+                        || containsCaseYear(line)) {
+                    continue;
+                }
+
+                return new int[]{pageIndex, i};
+            }
+        }
+
+        return null;
+    }
+
+    private List<String> collectFallbackPetitionerLines(
+            String[] pages,
+            int[] startPosition,
+            int versusPage,
+            int versusLine) {
+
+        List<String> result = new ArrayList<>();
+
+        for (int pageIndex = startPosition[0];
+             pageIndex <= versusPage;
+             pageIndex++) {
+
+            String[] lines = pages[pageIndex].split("\\R");
+
+            int start = pageIndex == startPosition[0]
+                    ? startPosition[1]
+                    : 0;
+
+            int end = pageIndex == versusPage
+                    ? versusLine
+                    : lines.length;
+
+            for (int i = start; i < end; i++) {
+
+                String line = cleanLine(lines[i]);
+
+                if (line.isBlank()) {
+                    continue;
+                }
+
+                if (isVersusLine(line) || isListOfDatesLine(line)) {
+                    return result;
+                }
+
+                if (isBracketLine(line)) {
+                    continue;
+                }
+
+                result.add(line);
+            }
+        }
+
+        return result;
+    }
+
+    private List<Draft_party> parseFallbackPetitionerLines(
+            List<String> lines) {
+
+        List<Draft_party> parties = new ArrayList<>();
+        StringBuilder name = new StringBuilder();
+
+        for (String originalLine : lines) {
+
+            String line = cleanLine(originalLine);
+
+            if (line.isBlank()
+                    || isBracketLine(line)
+                    || isListOfDatesLine(line)) {
+                continue;
+            }
+
+            line = removePartyRole(line);
+
+            if (line.isBlank()) {
+                continue;
+            }
+
+            if (!name.isEmpty()) {
+                name.append(" ");
+            }
+
+            name.append(line);
+        }
+
+        if (!name.isEmpty()) {
+            addParty(
+                    parties,
+                    "P",
+                    1,
+                    name.toString()
+            );
+        }
+
+        return parties;
     }
 
     private int[] findHighCourtHeading(
@@ -540,95 +752,49 @@ public class FieldExtractionServiceImpl implements FieldExtractionService {
             int petitionerPageIndex,
             int petitionerLineIndex) {
 
-        int[] headingPosition =
-                findHighCourtHeading(
-                        pages,
-                        petitionerPageIndex,
-                        petitionerLineIndex
-                );
+        int[] headingPosition = findHighCourtHeading(
+                pages,
+                petitionerPageIndex,
+                petitionerLineIndex
+        );
 
         if (headingPosition == null) {
             return null;
         }
 
-        int pageIndex = headingPosition[0];
-        int lineIndex = headingPosition[1] + 1;
+        int[] yearPosition = null;
 
-        int[] firstYearPosition = null;
-        int[] bracketPosition = null;
+        for (int pageIndex = headingPosition[0];
+             pageIndex <= petitionerPageIndex;
+             pageIndex++) {
 
-        while (pageIndex <= petitionerPageIndex) {
+            String[] lines = pages[pageIndex].split("\\R");
 
-            String[] lines =
-                    pages[pageIndex].split("\\R");
+            int start = pageIndex == headingPosition[0]
+                    ? headingPosition[1] + 1
+                    : 0;
 
-            while (lineIndex < lines.length) {
+            int end = pageIndex == petitionerPageIndex
+                    ? petitionerLineIndex
+                    : lines.length;
 
-                if (pageIndex == petitionerPageIndex
-                        && lineIndex >= petitionerLineIndex) {
-                    break;
+            for (int i = start; i < end; i++) {
+                if (containsCaseYear(cleanLine(lines[i]))) {
+                    yearPosition = new int[]{pageIndex, i};
                 }
-
-                String line =
-                        cleanLine(lines[lineIndex]);
-
-                if (line.isBlank()) {
-                    lineIndex++;
-                    continue;
-                }
-
-                if (firstYearPosition == null) {
-
-                    if (containsCaseYear(line)) {
-                        firstYearPosition =
-                                new int[]{
-                                        pageIndex,
-                                        lineIndex
-                                };
-                    }
-
-                    lineIndex++;
-                    continue;
-                }
-
-                if (isBracketLine(line)) {
-                    bracketPosition =
-                            new int[]{
-                                    pageIndex,
-                                    lineIndex
-                            };
-                    break;
-                }
-
-                lineIndex++;
             }
-
-            if (bracketPosition != null
-                    || (pageIndex == petitionerPageIndex
-                    && lineIndex >= petitionerLineIndex)) {
-                break;
-            }
-
-            pageIndex++;
-            lineIndex = 0;
         }
 
-        int[] startPosition =
-                bracketPosition != null
-                        ? bracketPosition
-                        : firstYearPosition;
-
-        if (startPosition == null) {
+        if (yearPosition == null) {
             return null;
         }
 
-        pageIndex = startPosition[0];
-        lineIndex = startPosition[1] + 1;
+        int pageIndex = yearPosition[0];
+        int lineIndex = yearPosition[1] + 1;
 
         while (pageIndex <= petitionerPageIndex) {
 
-            String[] lines =
-                    pages[pageIndex].split("\\R");
+            String[] lines = pages[pageIndex].split("\\R");
 
             while (lineIndex < lines.length) {
 
@@ -637,17 +803,18 @@ public class FieldExtractionServiceImpl implements FieldExtractionService {
                     return null;
                 }
 
-                String line =
-                        cleanLine(lines[lineIndex]);
+                String line = cleanLine(lines[lineIndex]);
 
-                if (!line.isBlank()) {
-                    return new int[]{
-                            pageIndex,
-                            lineIndex
-                    };
+                if (line.isBlank()
+                        || containsCaseYear(line)
+                        || isBracketLine(line)
+                        || isListOfDatesLine(line)
+                        || isVersusLine(line)) {
+                    lineIndex++;
+                    continue;
                 }
 
-                lineIndex++;
+                return new int[]{pageIndex, lineIndex};
             }
 
             pageIndex++;
@@ -671,12 +838,11 @@ public class FieldExtractionServiceImpl implements FieldExtractionService {
                 .toLowerCase();
 
         String[] roles = {
-                "petitioner",
-                "applicant",
-                "revisionist",
-                "appellant",
-                "detenue"
-
+                "petitioner", "petitioners",
+                "applicant", "applicants",
+                "revisionist", "revisionists",
+                "appellant", "appellants",
+                "detenue", "detenues"
         };
 
         for (String role : roles) {
@@ -707,9 +873,7 @@ public class FieldExtractionServiceImpl implements FieldExtractionService {
             return false;
         }
 
-        String cleaned = cleanLine(line);
-
-        cleaned = cleaned
+        String cleaned = line
                 .replaceAll("[^A-Za-z0-9/ ]", " ")
                 .replaceAll("\\s+", " ")
                 .trim();
@@ -718,15 +882,15 @@ public class FieldExtractionServiceImpl implements FieldExtractionService {
             return false;
         }
 
-        return fuzzyMatchingService.matches(
+        return fuzzyMatchingService.containsKeyword(
                 cleaned,
                 "versus",
-                0.80
-        ) || fuzzyMatchingService.matches(
+                0.60
+        ) || fuzzyMatchingService.containsKeyword(
                 cleaned,
                 "vs",
                 0.80
-        ) || fuzzyMatchingService.matches(
+        ) || fuzzyMatchingService.containsKeyword(
                 cleaned,
                 "v/s",
                 0.80
@@ -740,42 +904,39 @@ public class FieldExtractionServiceImpl implements FieldExtractionService {
 
         int checkedLines = 0;
 
-        int pageIndex =
-                petitionerPageIndex;
+        for (int pageIndex = petitionerPageIndex;
+             pageIndex < pages.length;
+             pageIndex++) {
 
-        int lineIndex =
-                petitionerLineIndex + 1;
+            String[] lines = pages[pageIndex].split("\\R");
 
-        while (pageIndex < pages.length
-                && checkedLines < 6) {
+            int start = pageIndex == petitionerPageIndex
+                    ? petitionerLineIndex + 1
+                    : 0;
 
-            String[] lines =
-                    pages[pageIndex].split("\\R");
+            for (int i = start; i < lines.length; i++) {
 
-            while (lineIndex < lines.length
-                    && checkedLines < 6) {
+                String line = cleanLine(lines[i]);
 
-                String nextLine =
-                        cleanLine(lines[lineIndex]);
-
-                if (!nextLine.isBlank()) {
-
-                    if (isVersusLine(nextLine)) {
-
-                        return new int[]{
-                                pageIndex,
-                                lineIndex
-                        };
-                    }
-
-                    checkedLines++;
+                if (line.isBlank()) {
+                    continue;
                 }
 
-                lineIndex++;
-            }
+                if (isVersusLine(line)) {
+                    return new int[]{pageIndex, i};
+                }
 
-            pageIndex++;
-            lineIndex = 0;
+                if (isListOfDatesLine(line)
+                        || isOppositePartyLine(line)) {
+                    return null;
+                }
+
+                checkedLines++;
+
+                if (checkedLines > 30) {
+                    return null;
+                }
+            }
         }
 
         return null;
@@ -906,47 +1067,38 @@ public class FieldExtractionServiceImpl implements FieldExtractionService {
             int petitionerPageIndex,
             int petitionerLineIndex) {
 
-        List<String> lines =
-                new ArrayList<>();
+        List<String> lines = new ArrayList<>();
 
-        int pageIndex =
-                startPosition[0];
+        for (int pageIndex = startPosition[0];
+             pageIndex <= petitionerPageIndex;
+             pageIndex++) {
 
-        int lineIndex =
-                startPosition[1];
+            String[] pageLines = pages[pageIndex].split("\\R");
 
-        for (; pageIndex <= petitionerPageIndex; pageIndex++) {
+            int start = pageIndex == startPosition[0]
+                    ? startPosition[1]
+                    : 0;
 
-            String[] pageLines =
-                    pages[pageIndex].split("\\R");
+            int end = pageIndex == petitionerPageIndex
+                    ? petitionerLineIndex + 1
+                    : pageLines.length;
 
-            int start =
-                    pageIndex == startPosition[0]
-                            ? lineIndex
-                            : 0;
+            for (int i = start; i < end; i++) {
 
-            int end =
-                    pageIndex == petitionerPageIndex
-                            ? petitionerLineIndex + 1
-                            : pageLines.length;
-
-            for (int i = start;
-                 i < end;
-                 i++) {
-
-                String line =
-                        cleanLine(pageLines[i]);
+                String line = cleanLine(pageLines[i]);
 
                 if (line.isBlank()) {
                     continue;
                 }
 
-                if (isVersusLine(line)) {
+                if (isVersusLine(line)
+                        || isListOfDatesLine(line)
+                        || isOppositePartyLine(line)) {
                     return lines;
                 }
 
-                if (isListOfDatesLine(line)) {
-                    return lines;
+                if (isBracketLine(line)) {
+                    continue;
                 }
 
                 lines.add(line);
@@ -1068,31 +1220,22 @@ public class FieldExtractionServiceImpl implements FieldExtractionService {
             String[] pages,
             int[] versusPosition) {
 
-        List<String> lines =
-                new ArrayList<>();
+        List<String> lines = new ArrayList<>();
 
-        int pageIndex =
-                versusPosition[0];
-
-        int lineIndex =
-                versusPosition[1] + 1;
+        int pageIndex = versusPosition[0];
+        int lineIndex = versusPosition[1] + 1;
 
         for (; pageIndex < pages.length; pageIndex++) {
 
-            String[] pageLines =
-                    pages[pageIndex].split("\\R");
+            String[] pageLines = pages[pageIndex].split("\\R");
 
-            int start =
-                    pageIndex == versusPosition[0]
-                            ? lineIndex
-                            : 0;
+            int start = pageIndex == versusPosition[0]
+                    ? lineIndex
+                    : 0;
 
-            for (int i = start;
-                 i < pageLines.length;
-                 i++) {
+            for (int i = start; i < pageLines.length; i++) {
 
-                String line =
-                        cleanLine(pageLines[i]);
+                String line = cleanLine(pageLines[i]);
 
                 if (line.isBlank()) {
                     continue;
@@ -1103,6 +1246,17 @@ public class FieldExtractionServiceImpl implements FieldExtractionService {
                 }
 
                 if (isOppositePartyLine(line)) {
+
+                    String respondentText = removeOppositePartyLabel(line);
+
+                    if (!respondentText.isBlank()) {
+                        lines.add(respondentText);
+                    }
+
+                    return lines;
+                }
+
+                if (isPetitionerLine(line)) {
                     return lines;
                 }
 
@@ -1113,6 +1267,29 @@ public class FieldExtractionServiceImpl implements FieldExtractionService {
         return lines;
     }
 
+
+    private String removeOppositePartyLabel(String line) {
+
+        if (line == null || line.isBlank()) {
+            return "";
+        }
+
+        String cleaned = line
+                .replaceAll("(?i)\\b0pposite\\b", "Opposite")
+                .replaceAll("(?i)\\b0pp\\b", "Opp");
+
+        Pattern pattern = Pattern.compile(
+                "(?i)\\b(?:opposite\\s+parties|opposite\\s+party|opp\\.?\\s+parties|opp\\.?\\s+party|respondents?)\\b"
+        );
+
+        Matcher matcher = pattern.matcher(cleaned);
+
+        if (matcher.find()) {
+            cleaned = cleaned.substring(0, matcher.start());
+        }
+
+        return cleanLine(cleaned);
+    }
 
     private void addParty(
             List<Draft_party> parties,
@@ -1504,6 +1681,7 @@ public class FieldExtractionServiceImpl implements FieldExtractionService {
 
         return cleaned;
     }
+
     private boolean isOppositePartyLine(String line) {
 
         if (line == null || line.isBlank()) {
@@ -1514,68 +1692,44 @@ public class FieldExtractionServiceImpl implements FieldExtractionService {
                 .replaceAll("[^A-Za-z0-9/ ]", " ")
                 .replaceAll("\\s+", " ")
                 .trim()
-                .toLowerCase();
-
-        cleaned = cleaned
+                .toLowerCase()
                 .replaceAll("\\b0pposite\\b", "opposite")
                 .replaceAll("\\b0pp\\b", "opp");
 
-        String[] words = cleaned.split("\\s+");
+        String[] roles = {
+                "opposite party",
+                "opposite parties",
+                "opp party",
+                "opp parties",
+                "respondent",
+                "respondents"
+        };
 
-        for (String word : words) {
+        for (String role : roles) {
 
-            if (fuzzyMatchingService.matches(
-                    word,
-                    "respondent",
-                    0.80
-            )
-                    || fuzzyMatchingService.matches(
-                    word,
-                    "respondents",
-                    0.80
-            )
-                    || fuzzyMatchingService.matches(
-                    word,
-                    "opposite",
-                    0.80
-            )
-                    || fuzzyMatchingService.matches(
-                    word,
-                    "opp",
+            if (cleaned.endsWith(role)) {
+                return true;
+            }
+
+            int start = Math.max(
+                    0,
+                    cleaned.length() - role.length() - 20
+            );
+
+            String ending = cleaned.substring(start);
+
+            if (fuzzyMatchingService.containsKeyword(
+                    ending,
+                    role,
                     0.80
             )) {
-
-                if (fuzzyMatchingService.containsKeyword(
-                        cleaned,
-                        "party",
-                        0.80
-                )
-                        || fuzzyMatchingService.containsKeyword(
-                        cleaned,
-                        "parties",
-                        0.80
-                )) {
-
-                    return true;
-                }
-
-                if (fuzzyMatchingService.matches(
-                        word,
-                        "respondent",
-                        0.80
-                )
-                        || fuzzyMatchingService.matches(
-                        word,
-                        "respondents",
-                        0.80
-                )) {
-                    return true;
-                }
+                return true;
             }
         }
 
         return false;
     }
+
 
     private boolean isListOfDatesLine(String line) {
 

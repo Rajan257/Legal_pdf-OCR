@@ -21,7 +21,7 @@ public class OcrServiceImpl implements OcrService {
     @Autowired
     private FieldExtractionService fieldExtractionService;
 
-    private final Semaphore ocrSemaphore = new Semaphore(2);
+    private final Semaphore ocrSemaphore = new Semaphore(2, true);
 
     @Override
     public ExtractedComplaintData extractTextFromPdf(MultipartFile file) throws Exception {
@@ -29,7 +29,6 @@ public class OcrServiceImpl implements OcrService {
         ocrSemaphore.acquire();
 
         try {
-
             Tesseract tesseract = new Tesseract();
 
             tesseract.setDatapath("C:\\Program Files\\Tesseract-OCR\\tessdata");
@@ -45,65 +44,85 @@ public class OcrServiceImpl implements OcrService {
 
                 int totalPages = document.getNumberOfPages();
                 int pagesToProcess = (int) Math.ceil(totalPages * 0.12);
+
                 if (pagesToProcess < 20) {
-                    pagesToProcess = 20;
+                   pagesToProcess = 20;
                 }
+
+                pagesToProcess = Math.min(pagesToProcess, totalPages);
+
                 boolean rotatePages = false;
 
                 if (totalPages > 1) {
-
                     System.out.println("Detecting orientation using page 2...");
 
-                    BufferedImage referenceImage = pdfRenderer.renderImageWithDPI(1, 150);
+                    BufferedImage referenceImage =
+                            pdfRenderer.renderImageWithDPI(1, 150);
 
                     rotatePages = shouldRotate(referenceImage, tesseract);
 
-                    System.out.println("Orientation decision: " + (rotatePages ? "180 degrees" : "normal"));
+                    System.out.println(
+                            "Orientation decision: "
+                                    + (rotatePages ? "180 degrees" : "normal")
+                    );
                 }
 
                 for (int page = 1; page < pagesToProcess; page++) {
 
-                    System.out.println("Processing page " + (page + 1) + " of " + pagesToProcess);
+                    System.out.println(
+                            "Processing page " + (page + 1)
+                                    + " of " + pagesToProcess
+                    );
 
                     String pageText = null;
 
                     try {
-
                         textStripper.setStartPage(page + 1);
                         textStripper.setEndPage(page + 1);
 
-                        String digitalText = textStripper.getText(document).trim();
+                        String digitalText =
+                                textStripper.getText(document).trim();
 
                         if (digitalText.length() > 100) {
-
-                            System.out.println("Page " + (page + 1) + ": Digital text detected. Skipping OCR.");
+                            System.out.println(
+                                    "Page " + (page + 1)
+                                            + ": Digital text detected. Skipping OCR."
+                            );
 
                             pageText = digitalText;
 
                         } else {
+                            System.out.println(
+                                    "Page " + (page + 1)
+                                            + ": Scanned page. Running OCR..."
+                            );
 
-                            System.out.println("Page " + (page + 1) + ": Scanned page. Running OCR...");
-
-                            BufferedImage rawImage = pdfRenderer.renderImageWithDPI(page, 200);
+                            BufferedImage rawImage =
+                                    pdfRenderer.renderImageWithDPI(page, 200);
 
                             if (rotatePages) {
                                 rawImage = rotate180(rawImage);
                             }
 
-                            BufferedImage grayscaleImage = convertToGrayscale(rawImage);
-                            BufferedImage binarizedImage = applyOtsuThreshold(grayscaleImage);
+                            BufferedImage grayscaleImage =
+                                    convertToGrayscale(rawImage);
+
+                            BufferedImage binarizedImage =
+                                    applyOtsuThreshold(grayscaleImage);
 
                             pageText = tesseract.doOCR(binarizedImage);
                         }
 
                     } catch (Exception ex) {
+                        System.err.println(
+                                "Error processing page " + (page + 1)
+                                        + ": " + ex.getMessage()
+                        );
 
-                        System.err.println("Error processing page " + (page + 1) + ": " + ex.getMessage());
                         ex.printStackTrace();
                     }
 
                     if (pageText != null && !pageText.isBlank()) {
-
                         extractedText.append("\n--- PAGE ")
                                 .append(page + 1)
                                 .append(" ---\n");
@@ -120,16 +139,15 @@ public class OcrServiceImpl implements OcrService {
             return fieldExtractionService.extractFields(fileName, text);
 
         } finally {
-
             ocrSemaphore.release();
         }
     }
 
-
-    private boolean shouldRotate(BufferedImage image, Tesseract tesseract) {
+    private boolean shouldRotate(
+            BufferedImage image,
+            Tesseract tesseract) {
 
         try {
-
             BufferedImage normalImage = convertToGrayscale(image);
             BufferedImage normalBinary = applyOtsuThreshold(normalImage);
 
@@ -150,16 +168,23 @@ public class OcrServiceImpl implements OcrService {
             int scoreDifference = rotatedScore - normalScore;
 
             if (scoreDifference >= 5) {
-                System.out.println("Rotation required. Score difference: " + scoreDifference);
+                System.out.println(
+                        "Rotation required. Score difference: " + scoreDifference
+                );
                 return true;
             }
 
-            System.out.println("Keeping normal orientation. Score difference: " + scoreDifference);
+            System.out.println(
+                    "Keeping normal orientation. Score difference: "
+                            + scoreDifference
+            );
+
             return false;
 
         } catch (Exception ex) {
-
-            System.err.println("Orientation detection failed: " + ex.getMessage());
+            System.err.println(
+                    "Orientation detection failed: " + ex.getMessage()
+            );
 
             return false;
         }
@@ -172,11 +197,9 @@ public class OcrServiceImpl implements OcrService {
         }
 
         int score = 0;
-
         String[] words = text.trim().split("\\s+");
 
         for (String word : words) {
-
             if (word.matches("[A-Za-z]{2,}")) {
                 score++;
             }
@@ -192,12 +215,15 @@ public class OcrServiceImpl implements OcrService {
         int width = image.getWidth();
         int height = image.getHeight();
 
-        BufferedImage rotated = new BufferedImage(width, height, image.getType());
+        BufferedImage rotated = new BufferedImage(
+                width,
+                height,
+                BufferedImage.TYPE_INT_RGB
+        );
 
         Graphics2D graphics = rotated.createGraphics();
 
         AffineTransform transform = new AffineTransform();
-
         transform.translate(width, height);
         transform.rotate(Math.PI);
 
@@ -216,7 +242,6 @@ public class OcrServiceImpl implements OcrService {
         );
 
         Graphics2D graphics = grayscale.createGraphics();
-
         graphics.drawImage(original, 0, 0, null);
         graphics.dispose();
 
@@ -231,16 +256,13 @@ public class OcrServiceImpl implements OcrService {
         int[] histogram = new int[256];
 
         for (int y = 0; y < height; y++) {
-
             for (int x = 0; x < width; x++) {
-
                 int pixel = grayscale.getRaster().getSample(x, y, 0);
                 histogram[pixel]++;
             }
         }
 
         int totalPixels = width * height;
-
         double sum = 0;
 
         for (int i = 0; i < 256; i++) {
@@ -268,15 +290,20 @@ public class OcrServiceImpl implements OcrService {
 
             sumBackground += (double) t * histogram[t];
 
-            double meanBackground = sumBackground / weightBackground;
-            double meanForeground = (sum - sumBackground) / weightForeground;
+            double meanBackground =
+                    sumBackground / weightBackground;
+
+            double meanForeground =
+                    (sum - sumBackground) / weightForeground;
 
             double betweenClassVariance =
                     (double) weightBackground * weightForeground
-                            * Math.pow(meanBackground - meanForeground, 2);
+                            * Math.pow(
+                            meanBackground - meanForeground,
+                            2
+                    );
 
             if (betweenClassVariance > maximumVariance) {
-
                 maximumVariance = betweenClassVariance;
                 threshold = t;
             }
@@ -291,7 +318,6 @@ public class OcrServiceImpl implements OcrService {
         );
 
         for (int y = 0; y < height; y++) {
-
             for (int x = 0; x < width; x++) {
 
                 int pixel = grayscale.getRaster().getSample(x, y, 0);
